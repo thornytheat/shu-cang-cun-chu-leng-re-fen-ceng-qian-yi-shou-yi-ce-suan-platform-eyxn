@@ -25,6 +25,10 @@ BLOCK_RECENT_DAYS = 7
 MIN_PARTITION = 3
 MIGRATE_PRICE = 0.75
 MIGRATE_FIXED = 270.0
+RETRIEVAL_PRICE_GB = 0.2
+REQUEST_PRICE_1K = 6.0
+RESTORE_SPEED_GB_H = 500.0
+RESTORE_DEADLINE_H = 8.0
 
 
 class FakePolicyGroup:
@@ -38,6 +42,10 @@ class FakePolicyGroup:
     min_partition = MIN_PARTITION
     migrate_price = MIGRATE_PRICE
     migrate_fixed = MIGRATE_FIXED
+    retrieval_price_gb = RETRIEVAL_PRICE_GB
+    request_price_1k = REQUEST_PRICE_1K
+    restore_speed_gb_h = RESTORE_SPEED_GB_H
+    restore_deadline_h = RESTORE_DEADLINE_H
 
     def price(self, tier: str) -> float:
         return PRICES[tier]
@@ -49,17 +57,52 @@ def jitter(name: str, offset: int) -> float:
     return 0.82 + 0.36 * (int.from_bytes(digest[:2], "big") / 65535.0)
 
 
+def _access_at(spec: fixtures.TableSpec, offset: int) -> int:
+    """seed 某一天的真实访问次数（quiet_after 之前恒 0，spikes 叠加）。"""
+    if spec.access_base == 0 or offset < spec.quiet_after:
+        access = 0
+    else:
+        access = round(spec.access_base * jitter(spec.full_name, offset))
+    return access + dict(spec.spikes).get(offset, 0)
+
+
 def seeded_counts(spec: fixtures.TableSpec, window_days: int = HEAT_WINDOW_DAYS) -> list[int]:
     """复算 seed 写入 access_stats 的 90 天访问序列（offset 0 = 今天，缺失日期补 0）。"""
-    spikes = dict(spec.spikes)
-    counts: list[int] = []
-    for offset in range(spec.access_days):
-        if spec.access_base == 0 or offset < spec.quiet_after:
-            access = 0
-        else:
-            access = round(spec.access_base * jitter(spec.full_name, offset))
-        counts.append(access + spikes.get(offset, 0))
+    counts = [_access_at(spec, offset) for offset in range(spec.access_days)]
     return counts + [0] * (window_days - len(counts))
+
+
+def seeded_usage(spec: fixtures.TableSpec, window_days: int = HEAT_WINDOW_DAYS) -> dict:
+    """复算 seed 的查询次数 / 扫描量汇总（迟到记录不按零查询，按有记录天外推）。"""
+    rows = []
+    for offset in range(spec.access_days):
+        access = _access_at(spec, offset)
+        query = max(0, round(access / 1.8))
+        scan = int(access * (40 + spec.size_gb * 1.5) * 1024 * 1024)
+        rows.append((query, scan))
+    return heat_core.aggregate_usage(rows, window_days)
+
+
+def seed_economics(spec: fixtures.TableSpec, usage: dict) -> dict:
+    """复算服务端 cost_service.economics 的温冷对比口径（纯函数，无 DB）。"""
+    return cost_core.compare_tiers(
+        spec.size_gb,
+        spec.tier,
+        price_before=PRICES[spec.tier],
+        warm_price=PRICES["warm"],
+        cold_price=PRICES["cold"],
+        retrieval_month_cold=cost_core.monthly_retrieval(
+            usage["scan_bytes_90"],
+            usage["query_90"],
+            retrieval_price_gb=RETRIEVAL_PRICE_GB,
+            request_price_1k=REQUEST_PRICE_1K,
+            window_days=HEAT_WINDOW_DAYS,
+        ),
+        restore_h=cost_core.restore_hours(spec.size_gb, RESTORE_SPEED_GB_H),
+        restore_deadline_h=RESTORE_DEADLINE_H,
+        migrate_price=MIGRATE_PRICE,
+        migrate_fixed=MIGRATE_FIXED,
+    )
 
 
 def build_seed_metrics() -> dict[str, dict]:
@@ -72,7 +115,7 @@ def build_seed_metrics() -> dict[str, dict]:
             block_recent_days=BLOCK_RECENT_DAYS,
             quiet_days=QUIET_DAYS,
         )
-        metrics[spec.full_name] = {**agg, "spec": spec}
+        metrics[spec.full_name] = {**agg, "spec": spec, "usage": seeded_usage(spec)}
 
     decay = heat_core.normalize_decay_scores(
         {name: item["weighted"] for name, item in metrics.items()}
@@ -91,18 +134,18 @@ def build_candidate_rows(metrics: dict[str, dict]) -> list[dict]:
     rows: list[dict] = []
     for name, item in metrics.items():
         spec = item["spec"]
-        econ = cost_core.economics(
-            spec.size_gb,
-            PRICES[spec.tier],
-            PRICES["cold"],
-            migrate_price=MIGRATE_PRICE,
-            migrate_fixed=MIGRATE_FIXED,
-        )
+        usage = item["usage"]
+        econ = seed_economics(spec, usage)
         verdict = cost_core.assess_risk(
             recent_block_access=item["recent_block"],
             report_refs=spec.report_refs,
             partition_count=spec.partition_count,
             report_names=spec.report_names,
+            stat_days=usage["stat_days"],
+            window_days=HEAT_WINDOW_DAYS,
+            restore_ok=econ["restore_ok"],
+            restore_hours=econ["restore_hours"],
+            restore_deadline_h=RESTORE_DEADLINE_H,
             block_recent_days=BLOCK_RECENT_DAYS,
             min_partition=MIN_PARTITION,
             quiet_days=QUIET_DAYS,
@@ -117,10 +160,17 @@ def build_candidate_rows(metrics: dict[str, dict]) -> list[dict]:
                 "partition_count": spec.partition_count,
                 "report_refs": spec.report_refs,
                 "hot_score": item["hot_score"],
+                "target_tier": econ["target_tier"],
                 "save_month": econ["save_month"],
+                "retrieval_month": econ["retrieval_month"],
                 "migration_cost": econ["migration_cost"],
                 "payback_months": econ["payback_months"],
                 "net_save_year": econ["net_save_year"],
+                "restore_hours": econ["restore_hours"],
+                "restore_ok": econ["restore_ok"],
+                "restore_verdict": econ["restore_verdict"],
+                "stats_days": usage["stat_days"],
+                "stats_complete": usage["stats_complete"],
                 "risk": verdict["risk"],
                 "reasons": verdict["reasons"],
                 "recent_block_access": item["recent_block"],

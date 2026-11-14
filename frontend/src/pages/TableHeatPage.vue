@@ -158,15 +158,19 @@ const checks = computed(() => detail.value?.risk.checks ?? [])
           </section>
 
           <section class="panel pad">
-            <p class="label">收益测算（迁到冷区）</p>
+            <p class="label">收益测算（温冷对比 · 目标{{ TIER_LABELS[detail.economics.target_tier] }}）</p>
             <dl class="econ">
               <div>
                 <dt>当前月成本</dt>
                 <dd class="mono">¥{{ money(detail.profile.monthly_cost, 2) }}</dd>
               </div>
               <div>
-                <dt>迁移后月成本</dt>
+                <dt>目标温区月成本</dt>
                 <dd class="mono">¥{{ money(detail.economics.cost_after, 2) }}</dd>
+              </div>
+              <div>
+                <dt>月检索成本（冷区）</dt>
+                <dd class="mono">¥{{ money(detail.economics.options.cold.retrieval_month, 2) }}</dd>
               </div>
               <div class="strong">
                 <dt>月省 / 年省</dt>
@@ -185,10 +189,21 @@ const checks = computed(() => detail.value?.risk.checks ?? [])
                 <dd class="mono">¥{{ money(detail.economics.net_save_year) }}</dd>
               </div>
             </dl>
+            <p class="mono tiny">{{ detail.economics.target_reason }}</p>
+            <p class="mono tiny" :class="detail.economics.restore_ok ? '' : 'over'">
+              {{ detail.economics.restore_verdict }}（{{ detail.economics.restore_hours }}h / 时限
+              {{ detail.economics.restore_deadline_h }}h）
+            </p>
             <p class="mono tiny">
-              单价 {{ detail.economics.price_before }} → {{ detail.economics.price_after }} ¥/GB·月；迁移
-              {{ detail.economics.migration_cost ? money(detail.economics.migration_cost / detail.economics.size_gb, 2) : '0' }}
-              ¥/GB + 工单固定成本
+              温区方案 月省 ¥{{ money(detail.economics.options.warm.save_month, 2) }} · 净年省 ¥{{
+                money(detail.economics.options.warm.net_save_year)
+              }}；冷区方案 月省 ¥{{ money(detail.economics.options.cold.save_month, 2) }}（含检索费 ¥{{
+                money(detail.economics.options.cold.retrieval_month, 2)
+              }}）· 净年省 ¥{{ money(detail.economics.options.cold.net_save_year) }}
+            </p>
+            <p class="mono tiny">
+              近 90 天查询 {{ money(detail.heat.query_90) }} 次 · 扫描 {{ bytes(detail.heat.scan_bytes_90) }} ·
+              统计 {{ detail.heat.stat_days }}/{{ detail.heat.window_days }} 天<template v-if="!detail.heat.stats_complete">（迟到记录未补齐，按有记录天外推）</template>
             </p>
           </section>
         </aside>
@@ -310,6 +325,9 @@ const checks = computed(() => detail.value?.risk.checks ?? [])
   display: block;
   margin-top: 6px;
   line-height: 1.5;
+}
+.tiny.over {
+  color: var(--warn);
 }
 .explain {
   padding: 10px 14px 12px;

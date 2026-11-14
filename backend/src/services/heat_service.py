@@ -56,6 +56,10 @@ class HotScore:
     total_window_access: int
     suggested_tier: str
     suggested_reason: str
+    query_90: float = 0.0
+    scan_bytes_90: float = 0.0
+    stat_days: int = 0
+    stats_complete: bool = False
     series: list[DayPoint] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -71,6 +75,10 @@ class HotScore:
             "total_90_access": self.total_window_access,
             "suggested_tier": self.suggested_tier,
             "suggested_reason": self.suggested_reason,
+            "query_90": round(self.query_90),
+            "scan_bytes_90": round(self.scan_bytes_90),
+            "stat_days": self.stat_days,
+            "stats_complete": self.stats_complete,
             "computed_at": datetime.now(timezone.utc).isoformat(),
             "window_days": WINDOW_DAYS,
             "half_life_days": HALF_LIFE_DAYS,
@@ -151,11 +159,23 @@ def compute_scores(db: Session, group, as_of: date | None = None) -> dict[str, H
             block_recent_days=group.block_recent_days,
             quiet_days=group.quiet_days,
         )
+        usage = heat_core.aggregate_usage(
+            [
+                (int(day_map[day].query_count), int(day_map[day].scan_bytes))
+                for day in window
+                if day in day_map
+            ],
+            WINDOW_DAYS,
+        )
         raw[key] = {
             "weighted": agg["weighted"],
             "recent_7": agg["recent_block"],
             "recent_30": agg["recent_quiet"],
             "total": agg["total"],
+            "query_90": usage["query_90"],
+            "scan_bytes_90": usage["scan_bytes_90"],
+            "stat_days": usage["stat_days"],
+            "stats_complete": usage["stats_complete"],
         }
 
     max_weighted = max((item["weighted"] for item in raw.values()), default=0.0) or 1.0
@@ -184,6 +204,10 @@ def compute_scores(db: Session, group, as_of: date | None = None) -> dict[str, H
             total_window_access=item["total"],
             suggested_tier=tier,
             suggested_reason=reason,
+            query_90=item["query_90"],
+            scan_bytes_90=item["scan_bytes_90"],
+            stat_days=item["stat_days"],
+            stats_complete=item["stats_complete"],
         )
     return scores
 

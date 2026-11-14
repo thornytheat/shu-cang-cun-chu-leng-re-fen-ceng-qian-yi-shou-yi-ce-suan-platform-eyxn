@@ -18,6 +18,10 @@ export interface PolicyUpdatePayload {
   min_partition: number
   migrate_price: number
   migrate_fixed: number
+  retrieval_price_gb: number
+  request_price_1k: number
+  restore_speed_gb_h: number
+  restore_deadline_h: number
   note: string
 }
 

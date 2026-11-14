@@ -1,12 +1,14 @@
 """聚合口径纯函数层（试算 / 计划汇总 / 候选排序 / 阈值校验）。
 
-试算与计划提交共用同一套汇总口径（batch-plan §5.6）：
+试算与计划提交共用同一套汇总口径（batch-plan §5.6），**汇总 = 逐表结果之和**：
 
-  save_month     = Σ 逐表月省
+  save_month     = Σ 逐表月省（已扣目标温区检索费）
   save_year      = save_month × 12
-  migration_cost = Σ（size × 迁移单价 + 每表固定工单成本）
+  retrieval_month= Σ 逐表目标温区月检索成本（温区目标为 0）
+  migration_cost = Σ（size × 迁移单价 + 每表固定工单成本；目标 = 当前温区为 0）
   net_save_year  = Σ 逐表首年净省 = save_year - migration_cost
-  avg_payback    = migration_cost / save_month（总量加权，1.8 月即此口径）
+  avg_payback    = migration_cost / save_month（总量加权）
+  target_*     = 目标温区为温 / 冷的表数；stats_incomplete_count = 统计不完整表数
 
 只吃 dict 或带同名属性的对象，不 import Session，可被 pytest 直接单测。
 """
@@ -19,42 +21,35 @@ from src.utils.numeric import money
 MAX_TRIAL_ROWS = 200
 MAX_PLAN_ITEMS = 60
 
-_FIELDS = (
-    "size_gb",
-    "save_month",
-    "migration_cost",
-    "net_save_year",
-    "risk",
-    "hot_score",
-    "tier",
-    "table_name",
-    "full_name",
-)
 
-
-def _field(item, name):
+def _field(item, name, default=None):
     if isinstance(item, dict):
-        return item[name]
-    return getattr(item, name)
+        return item.get(name, default)
+    return getattr(item, name, default)
 
 
 def aggregate(items: list) -> dict:
     """一次汇总。空输入 -> 全 0 且 avg_payback=None（明确降级，不抛异常）。"""
     count = len(items)
-    size_total = sum(float(_field(item, "size_gb")) for item in items)
-    save_month = sum(float(_field(item, "save_month")) for item in items)
-    migration = sum(float(_field(item, "migration_cost")) for item in items)
-    net = sum(float(_field(item, "net_save_year")) for item in items)
+    size_total = sum(float(_field(item, "size_gb", 0) or 0) for item in items)
+    save_month = sum(float(_field(item, "save_month", 0) or 0) for item in items)
+    retrieval = sum(float(_field(item, "retrieval_month", 0) or 0) for item in items)
+    migration = sum(float(_field(item, "migration_cost", 0) or 0) for item in items)
+    net = sum(float(_field(item, "net_save_year", 0) or 0) for item in items)
     return {
         "count": count,
         "size_total_gb": money(size_total),
         "save_month": money(save_month),
         "save_year": money(save_month * 12),
+        "retrieval_month": money(retrieval),
         "migration_cost": money(migration),
         "net_save_year": money(net),
         "avg_payback": payback_months(migration, save_month),
         "risk_block_count": sum(1 for item in items if _field(item, "risk") == RiskLevel.BLOCK),
         "risk_warn_count": sum(1 for item in items if _field(item, "risk") == RiskLevel.WARN),
+        "target_warm_count": sum(1 for item in items if _field(item, "target_tier") == StorageTier.WARM),
+        "target_cold_count": sum(1 for item in items if _field(item, "target_tier") == StorageTier.COLD),
+        "stats_incomplete_count": sum(1 for item in items if _field(item, "stats_complete") is False),
     }
 
 
@@ -94,6 +89,15 @@ def blockers(items: list) -> list[str]:
     names = []
     for item in items:
         if _field(item, "risk") == RiskLevel.BLOCK:
+            names.append(_field(item, "table_name") or _field(item, "full_name"))
+    return names
+
+
+def incomplete_stats(items: list) -> list[str]:
+    """缺少完整 90 天统计的表名（迟到记录未补齐）；提交前必须为空。"""
+    names = []
+    for item in items:
+        if _field(item, "stats_complete") is False:
             names.append(_field(item, "table_name") or _field(item, "full_name"))
     return names
 

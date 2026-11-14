@@ -65,12 +65,20 @@ const submitted = computed(() => props.plan.status === 'submitted')
         <strong class="mono">{{ plan.item_count }}</strong>
       </div>
       <div class="cell">
+        <span class="label">目标温区</span>
+        <strong class="mono">温 {{ plan.target_warm_count }} · 冷 {{ plan.target_cold_count }}</strong>
+      </div>
+      <div class="cell">
         <span class="label">总体积</span>
         <strong class="mono">{{ gb(plan.total_size_gb) }}</strong>
       </div>
       <div class="cell">
         <span class="label">月省</span>
         <strong class="mono">¥{{ money(plan.save_month) }}</strong>
+      </div>
+      <div class="cell">
+        <span class="label">月检索成本</span>
+        <strong class="mono">¥{{ money(plan.retrieval_month, 2) }}</strong>
       </div>
       <div class="cell">
         <span class="label">年省</span>
@@ -97,9 +105,12 @@ const submitted = computed(() => props.plan.status === 'submitted')
       </div>
     </div>
 
+    <p v-if="plan.stats_incomplete_count" class="banner block mono">
+      ■ {{ plan.stats_incomplete_count }} 张表缺少完整的 90 天统计（迟到记录未补齐），不得提交
+    </p>
     <p v-if="blockers.length" class="banner block mono">
       ■ {{ blockers.length }} 张被阻断：{{ blockers.map((item) => item.table_name).join('、') }} —— 冷存要求近 30
-      天零访问，逐张移除后才能提交
+      天零访问且统计完整，逐张移除后才能提交
     </p>
     <p v-else-if="warns.length" class="banner warn mono">
       ▲ {{ warns.length }} 张需报表 owner 书面确认：{{ warns.map((item) => item.table_name).join('、') }}
@@ -112,12 +123,14 @@ const submitted = computed(() => props.plan.status === 'submitted')
           <tr>
             <th class="w-i">#</th>
             <th>库表</th>
-            <th>温区</th>
+            <th>温区 → 目标</th>
             <th class="num">体积</th>
             <th class="num">热度</th>
             <th class="num">月省</th>
+            <th class="num">检索费/月</th>
             <th class="num">回收期</th>
             <th class="num">净年省</th>
+            <th>恢复时限结论</th>
             <th>风险 / 原因</th>
             <th class="w-act"></th>
           </tr>
@@ -128,16 +141,27 @@ const submitted = computed(() => props.plan.status === 'submitted')
             <td class="mono name">
               {{ item.table_name }}
               <span class="iname-cost mono">迁移成本 ¥{{ money(item.migration_cost) }}</span>
+              <span v-if="!item.stats_complete" class="iname-cost mono bad">
+                统计仅 {{ item.stats_days }}/90 天，迟到记录未补齐
+              </span>
             </td>
             <td class="mono tiercell">
               {{ item.from_tier === 'hot' ? 'H' : item.from_tier === 'warm' ? 'W' : 'C' }} →
-              {{ item.suggested_tier === 'hot' ? 'H' : item.suggested_tier === 'warm' ? 'W' : 'C' }}
+              {{ item.target_tier === 'hot' ? 'H' : item.target_tier === 'warm' ? 'W' : 'C' }}
             </td>
             <td class="num mono">{{ gb(item.size_gb) }}</td>
             <td class="num mono">{{ item.hot_score.toFixed(1) }}</td>
             <td class="num mono">¥{{ money(item.save_month) }}</td>
+            <td class="num mono" :class="{ 'ret-zero': !item.retrieval_month }">
+              ¥{{ money(item.retrieval_month, 2) }}
+            </td>
             <td class="num mono">{{ months(item.payback_months) }}</td>
             <td class="num mono">¥{{ money(item.net_save_year) }}</td>
+            <td class="restorecell">
+              <span class="mono restore" :class="item.restore_ok ? 'ok' : 'over'">
+                {{ item.restore_ok ? '○' : '▲' }} {{ item.restore_verdict }}
+              </span>
+            </td>
             <td class="riskcell">
               <RiskBadge :risk="item.risk" :reason="item.reasons" />
               <span class="reason">{{ item.reasons }}</span>
@@ -161,6 +185,7 @@ const submitted = computed(() => props.plan.status === 'submitted')
         计划里还没有表 —— 回到「策略与试算」勾选候选表后再建一次计划。
       </p>
     </div>
+    <p class="note mono">汇总口径：净年省 = 年省（已扣检索费）− 一次性迁移成本；汇总 = 逐表结果之和。</p>
     <p v-if="plan.note" class="note mono">备注：{{ plan.note }}</p>
   </section>
 </template>
@@ -219,7 +244,7 @@ const submitted = computed(() => props.plan.status === 'submitted')
 }
 .summary {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(10, minmax(0, 1fr));
   border-bottom: var(--hair);
 }
 .cell {
@@ -278,7 +303,7 @@ const submitted = computed(() => props.plan.status === 'submitted')
   overflow-x: auto;
 }
 table {
-  min-width: 860px;
+  min-width: 1080px;
 }
 thead th {
   font-family: var(--font-mono);
@@ -313,6 +338,25 @@ tbody tr.blocked {
   font-size: 9.5px;
   color: var(--slate-faint);
   margin-top: 1px;
+}
+.iname-cost.bad {
+  color: var(--block);
+}
+.ret-zero {
+  color: var(--slate-faint);
+}
+.restorecell {
+  min-width: 170px;
+}
+.restore {
+  font-size: 10px;
+  line-height: 1.45;
+}
+.restore.ok {
+  color: var(--ok);
+}
+.restore.over {
+  color: var(--warn);
 }
 .tiercell {
   font-size: 10.5px;
@@ -353,7 +397,7 @@ tbody tr.blocked {
 .w-act { width: 74px; }
 @media (max-width: 1200px) {
   .summary {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 @media (max-width: 700px) {

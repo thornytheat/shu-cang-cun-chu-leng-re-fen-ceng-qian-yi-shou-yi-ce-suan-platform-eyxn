@@ -25,6 +25,7 @@ class MigrationPlan(Base, TimestampMixin):
     total_size_gb: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     save_month: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     save_year: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    retrieval_month: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     migration_cost: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     net_save_year: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     avg_payback: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)

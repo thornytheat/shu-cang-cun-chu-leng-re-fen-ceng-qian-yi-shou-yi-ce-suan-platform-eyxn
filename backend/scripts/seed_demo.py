@@ -101,6 +101,10 @@ def seed_policies(db) -> bool:
                 min_partition=fixtures.POLICY_COLD_RULES["min_partition"],
                 migrate_price=fixtures.POLICY_COLD_RULES["migrate_price"],
                 migrate_fixed=fixtures.POLICY_COLD_RULES["migrate_fixed"],
+                retrieval_price_gb=fixtures.POLICY_COLD_RULES["retrieval_price_gb"],
+                request_price_1k=fixtures.POLICY_COLD_RULES["request_price_1k"],
+                restore_speed_gb_h=fixtures.POLICY_COLD_RULES["restore_speed_gb_h"],
+                restore_deadline_h=fixtures.POLICY_COLD_RULES["restore_deadline_h"],
                 activated_at=now,
                 updated_by="admin@coldtier.io",
             )

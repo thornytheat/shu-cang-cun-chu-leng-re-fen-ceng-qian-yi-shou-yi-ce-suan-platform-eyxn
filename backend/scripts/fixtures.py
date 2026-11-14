@@ -3,8 +3,9 @@
 规模校验（seed 会断言后打印）：
   表 12 热区 + 18 温区 + 12 冷区 = 42；体积 13,680 + 25,620 + 3,708 = 43,008 GB = 42.0 TB
   访问统计 39 张表 × 90 天 + 2 张 × 40 天 + 1 张 × 10 天 = 3,600 行
-  试算（阈值 20）命中热区 12 张，月省 ¥6,840 / 年省 ¥82,080
-  勾选前 8 张 → 风险复检 2 阻断 + 1 需确认 → 移除 2 张后 6 张：净年省 ¥51,300，平均回收期 1.8 月
+  试算（阈值 20）命中热区 12 张：温冷对比后 2 张降级温区（恢复超时 / 检索费吃价差）、10 张进冷区，
+    月省 ¥3,972.21 / 年省 ¥47,666.52（已扣冷区检索费 ¥923.79/月）
+  勾选前 8 张 → 风险复检 2 阻断 + 2 需确认 → 移除 2 张后 6 张：净年省 ¥21,027.07，平均回收期 3.6 月
 """
 from __future__ import annotations
 
@@ -70,6 +71,11 @@ POLICY_COLD_RULES = {
     "min_partition": 3,
     "migrate_price": 0.75,
     "migrate_fixed": 270,
+    # 冷区检索费与恢复时限（降冷测算口径）
+    "retrieval_price_gb": 0.2,
+    "request_price_1k": 6.0,
+    "restore_speed_gb_h": 500,
+    "restore_deadline_h": 8,
 }
 
 OWNERS = ["林哲", "周雨桐", "王皓", "何一帆", "郑舒", "刘星辰", "吴倩", "陈可欣", "赵敏"]
@@ -214,13 +220,13 @@ SEED_PLAN_NOTE = "季度巡检基线：12 张热区表 + 2 张人工加塞，待
 # 主流程验收脚本使用的 8 张表（试算结果按预估月省倒序，前 8 行即这 8 张）
 PRIMARY_FLOW_SELECTION = [
     "dwd.trade_order_detail",
+    "ads.monthly_finance_report_base",
+    "dwd.coupon_use_detail",
     "ods.click_stream",
     "dwd.inventory_move_detail",
-    "ads.monthly_finance_report_base",
-    "ods.order_item",
     "dws.store_daily_gmv",
-    "dwd.coupon_use_detail",
-    "ods.payment_flow",
+    "ods.order_item",
+    "ods.logistics_bill",
 ]
 
 EXPECTED_TIER_COUNT = {"hot": 12, "warm": 18, "cold": 12}

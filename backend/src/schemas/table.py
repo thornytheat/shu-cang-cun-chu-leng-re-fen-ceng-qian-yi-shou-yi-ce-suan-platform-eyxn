@@ -25,6 +25,10 @@ class HotScoreOut(BaseModel):
     total_90_access: int
     suggested_tier: str
     suggested_reason: str
+    query_90: int
+    scan_bytes_90: int
+    stat_days: int
+    stats_complete: bool
     computed_at: str
     window_days: int
     half_life_days: float

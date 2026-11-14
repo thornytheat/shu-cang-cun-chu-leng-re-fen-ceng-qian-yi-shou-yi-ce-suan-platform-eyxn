@@ -16,6 +16,10 @@ interface Draft {
   min_partition: number
   migrate_price: number
   migrate_fixed: number
+  retrieval_price_gb: number
+  request_price_1k: number
+  restore_speed_gb_h: number
+  restore_deadline_h: number
 }
 
 const draft = reactive<Draft>({
@@ -27,6 +31,10 @@ const draft = reactive<Draft>({
   min_partition: 3,
   migrate_price: 0.75,
   migrate_fixed: 270,
+  retrieval_price_gb: 0.2,
+  request_price_1k: 6,
+  restore_speed_gb_h: 500,
+  restore_deadline_h: 8,
 })
 
 function hydrate(policy: PolicyGroup | null) {
@@ -43,6 +51,10 @@ function hydrate(policy: PolicyGroup | null) {
     draft.min_partition = cold.min_partition
     draft.migrate_price = cold.migrate_price
     draft.migrate_fixed = cold.migrate_fixed
+    draft.retrieval_price_gb = cold.retrieval_price_gb
+    draft.request_price_1k = cold.request_price_1k
+    draft.restore_speed_gb_h = cold.restore_speed_gb_h
+    draft.restore_deadline_h = cold.restore_deadline_h
   }
 }
 
@@ -61,6 +73,10 @@ function submit() {
     min_partition: Number(draft.min_partition),
     migrate_price: Number(draft.migrate_price),
     migrate_fixed: Number(draft.migrate_fixed),
+    retrieval_price_gb: Number(draft.retrieval_price_gb),
+    request_price_1k: Number(draft.request_price_1k),
+    restore_speed_gb_h: Number(draft.restore_speed_gb_h),
+    restore_deadline_h: Number(draft.restore_deadline_h),
     note: '策略页人工调参',
   })
 }
@@ -125,6 +141,25 @@ function submit() {
       <label class="field">
         <span>每表工单成本 ¥</span>
         <input v-model.number="draft.migrate_fixed" class="input" type="number" min="0" step="10" />
+      </label>
+    </div>
+    <div class="rules">
+      <p class="rules-title">冷区检索费与恢复时限（温冷对比测算）</p>
+      <label class="field">
+        <span>检索单价 ¥/GB（按扫描量）</span>
+        <input v-model.number="draft.retrieval_price_gb" class="input" type="number" min="0" step="0.01" />
+      </label>
+      <label class="field">
+        <span>请求单价 ¥/千次</span>
+        <input v-model.number="draft.request_price_1k" class="input" type="number" min="0" step="0.5" />
+      </label>
+      <label class="field">
+        <span>恢复速度 GB/小时</span>
+        <input v-model.number="draft.restore_speed_gb_h" class="input" type="number" min="1" step="50" />
+      </label>
+      <label class="field">
+        <span>恢复时限 小时（超时降级温区）</span>
+        <input v-model.number="draft.restore_deadline_h" class="input" type="number" min="1" max="720" step="1" />
       </label>
     </div>
     <p class="foot mono">

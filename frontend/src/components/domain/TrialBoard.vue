@@ -45,7 +45,10 @@ const canCreate = computed(() => props.selected.length > 0 && !props.busy)
 
     <p class="scopeline mono">
       候选口径：当前不在冷区 且 热度分 &lt; {{ trial.threshold }} · 评估范围 {{ trial.evaluated_count }} 张 ·
+      目标温区 温 {{ trial.target_warm_count }} / 冷 {{ trial.target_cold_count }} ·
+      检索费 ¥{{ money(trial.retrieval_month, 2) }}/月 ·
       阻断 {{ trial.risk_block_count }} / 需确认 {{ trial.risk_warn_count }}
+      <template v-if="trial.stats_incomplete_count"> · 统计不完整 {{ trial.stats_incomplete_count }}</template>
     </p>
 
     <div class="table-wrap">
@@ -57,8 +60,9 @@ const canCreate = computed(() => props.selected.length > 0 && !props.busy)
             <th>库表</th>
             <th class="num">体积</th>
             <th class="num">热度</th>
-            <th>建议温区</th>
+            <th>目标温区</th>
             <th class="num">月省</th>
+            <th class="num">检索费/月</th>
             <th class="num">回收期</th>
             <th class="num">净年省</th>
             <th>风险</th>
@@ -82,11 +86,20 @@ const canCreate = computed(() => props.selected.length > 0 && !props.busy)
             <td class="name">
               <span class="mono">{{ hit.full_name }}</span>
               <span class="meta mono">{{ TIER_LABELS[hit.tier] }} · {{ hit.partition_count }} 分区</span>
+              <span v-if="!hit.stats_complete" class="meta mono bad">
+                统计仅 {{ hit.stats_days }}/90 天，迟到记录未补齐
+              </span>
             </td>
             <td class="num mono">{{ gb(hit.size_gb) }}</td>
             <td class="num mono">{{ hit.hot_score.toFixed(1) }}</td>
-            <td class="mono sugg">{{ TIER_LABELS[hit.suggested_tier] }}</td>
+            <td class="mono sugg">
+              {{ TIER_LABELS[hit.target_tier] }}
+              <span class="meta mono" :title="hit.restore_verdict">{{ hit.restore_verdict }}</span>
+            </td>
             <td class="num mono">¥{{ money(hit.save_month) }}</td>
+            <td class="num mono" :class="{ 'ret-zero': !hit.retrieval_month }">
+              ¥{{ money(hit.retrieval_month, 2) }}
+            </td>
             <td class="num mono">{{ months(hit.payback_months) }}</td>
             <td class="num mono">¥{{ money(hit.net_save_year) }}</td>
             <td class="risk-cell">
@@ -142,7 +155,7 @@ const canCreate = computed(() => props.selected.length > 0 && !props.busy)
   overflow-x: auto;
 }
 table {
-  min-width: 980px;
+  min-width: 1100px;
 }
 thead th {
   font-family: var(--font-mono);
@@ -174,6 +187,20 @@ tbody tr.blocked {
 .name .meta {
   display: block;
   font-size: 10px;
+  color: var(--slate-faint);
+}
+.name .meta.bad {
+  color: var(--block);
+}
+.sugg .meta {
+  display: block;
+  font-size: 9.5px;
+  color: var(--slate-faint);
+  max-width: 180px;
+  white-space: normal;
+  line-height: 1.4;
+}
+.ret-zero {
   color: var(--slate-faint);
 }
 .code {

@@ -10,12 +10,19 @@ class PlanItemOut(BaseModel):
     table_name: str
     from_tier: str
     suggested_tier: str
+    target_tier: str
     size_gb: float
     hot_score: float
     save_month: float
+    retrieval_month: float
     migration_cost: float
     payback_months: float | None
     net_save_year: float
+    restore_hours: float | None
+    restore_ok: bool
+    restore_verdict: str
+    stats_days: int
+    stats_complete: bool
     risk: str
     reasons: str
     status: str
@@ -32,11 +39,15 @@ class PlanOut(BaseModel):
     total_size_gb: float
     save_month: float
     save_year: float
+    retrieval_month: float
     migration_cost: float
     net_save_year: float
     avg_payback: float | None
     risk_block_count: int
     risk_warn_count: int
+    target_warm_count: int
+    target_cold_count: int
+    stats_incomplete_count: int
     created_by: str
     submitted_by: str
     submitted_at: str | None
@@ -64,9 +75,13 @@ class PlanSummaryOut(BaseModel):
     total_size_gb: float
     save_month: float
     save_year: float
+    retrieval_month: float
     migration_cost: float
     net_save_year: float
     avg_payback: float | None
     risk_block_count: int
     risk_warn_count: int
+    target_warm_count: int
+    target_cold_count: int
+    stats_incomplete_count: int
     rechecked_at: str | None

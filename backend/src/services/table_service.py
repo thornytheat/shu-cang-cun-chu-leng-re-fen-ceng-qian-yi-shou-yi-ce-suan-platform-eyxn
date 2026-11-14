@@ -14,8 +14,8 @@ from src.utils.numeric import money
 
 
 def _row(profile: TableProfile, hot, group) -> dict:
-    econ = cost_service.economics(float(profile.size_gb), profile.tier, group)
-    verdict = cost_service.assess_risk(profile, hot, group)
+    econ = cost_service.economics(float(profile.size_gb), profile.tier, group, hot)
+    verdict = cost_service.assess_risk(profile, hot, group, econ)
     monthly_cost = money(float(profile.size_gb) * group.price(profile.tier))
     cold_save = 0.0 if profile.tier == StorageTier.COLD else econ.save_month
     return {
@@ -93,8 +93,8 @@ def get_detail(db: Session, group, table_id: str) -> dict:
     if hot is None:
         raise AppError(codes.NOT_FOUND, "表热度尚未计算", f"table_id={table_id}")
     points = heat_service.load_series(db, str(profile.id))
-    econ = cost_service.economics(float(profile.size_gb), profile.tier, group)
-    verdict = cost_service.assess_risk(profile, hot, group)
+    econ = cost_service.economics(float(profile.size_gb), profile.tier, group, hot)
+    verdict = cost_service.assess_risk(profile, hot, group, econ)
     row = _row(profile, hot, group)
 
     others = [

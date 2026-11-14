@@ -99,6 +99,33 @@ def normalize_decay_scores(weighted: dict[str, float]) -> dict[str, float]:
     return {key: float(value) / peak * 100.0 for key, value in weighted.items()}
 
 
+def aggregate_usage(
+    usage_rows: list[tuple[int, int]],
+    window_days: int = DEFAULT_WINDOW_DAYS,
+) -> dict:
+    """汇总近窗口期的查询次数与扫描量（检索成本口径）。
+
+    usage_rows 只含「有统计记录」的天：[(query_count, scan_bytes), ...]。
+    迟到记录（缺统计的天）**不按零查询**：按有记录天的日均外推到整个窗口，
+    避免把尚未到达的统计当成零查询、低估冷区检索费；
+    stat_days < window_days 时 stats_complete=False（缺少完整统计，提交闸门的硬条件）。
+    """
+    if window_days < 1:
+        raise ValueError(f"window_days 必须 >= 1，收到 {window_days}")
+    stat_days = len(usage_rows)
+    if stat_days == 0:
+        return {"query_90": 0.0, "scan_bytes_90": 0.0, "stat_days": 0, "stats_complete": False}
+    query_obs = sum(int(query) for query, _ in usage_rows)
+    scan_obs = sum(int(scan) for _, scan in usage_rows)
+    scale = float(window_days) / float(stat_days)
+    return {
+        "query_90": query_obs * scale,
+        "scan_bytes_90": scan_obs * scale,
+        "stat_days": stat_days,
+        "stats_complete": stat_days >= window_days,
+    }
+
+
 def report_bonus(
     report_refs: int | None,
     per_ref: int = DEFAULT_REPORT_BONUS_PER_REF,

@@ -45,21 +45,45 @@ export interface HotScore {
   total_90_access: number
   suggested_tier: StorageTier
   suggested_reason: string
+  query_90: number
+  scan_bytes_90: number
+  stat_days: number
+  stats_complete: boolean
   computed_at: string
   window_days: number
   half_life_days: number
 }
 
-export interface Economics {
-  price_before: number
+export interface TierOption {
+  tier: StorageTier
   price_after: number
-  cost_before: number
   cost_after: number
+  retrieval_month: number
   save_month: number
   save_year: number
   migration_cost: number
   payback_months: number | null
   net_save_year: number
+}
+
+export interface Economics {
+  target_tier: StorageTier
+  target_reason: string
+  price_before: number
+  price_after: number
+  cost_before: number
+  cost_after: number
+  retrieval_month: number
+  save_month: number
+  save_year: number
+  migration_cost: number
+  payback_months: number | null
+  net_save_year: number
+  restore_hours: number
+  restore_deadline_h: number
+  restore_ok: boolean
+  restore_verdict: string
+  options: Record<StorageTier, TierOption>
 }
 
 export interface RiskCheck {
@@ -163,6 +187,10 @@ export interface PolicyTier {
   min_partition: number
   migrate_price: number
   migrate_fixed: number
+  retrieval_price_gb: number
+  request_price_1k: number
+  restore_speed_gb_h: number
+  restore_deadline_h: number
   updated_by: string
   updated_at: string
   is_current: boolean
@@ -188,10 +216,19 @@ export interface TrialHit {
   report_refs: number
   hot_score: number
   suggested_tier: StorageTier
+  target_tier: StorageTier
   save_month: number
+  retrieval_month: number
   migration_cost: number
   payback_months: number | null
   net_save_year: number
+  restore_hours: number | null
+  restore_ok: boolean
+  restore_verdict: string
+  query_90: number
+  scan_gb_90: number
+  stats_days: number
+  stats_complete: boolean
   risk: RiskLevel
   reasons: string
   recent_7_access: number
@@ -206,11 +243,15 @@ export interface TrialResult {
   size_total_gb: number
   save_month: number
   save_year: number
+  retrieval_month: number
   migration_cost: number
   net_save_year: number
   avg_payback: number | null
   risk_block_count: number
   risk_warn_count: number
+  target_warm_count: number
+  target_cold_count: number
+  stats_incomplete_count: number
   hits: TrialHit[]
   computed_at: string
 }
@@ -221,12 +262,19 @@ export interface PlanItem {
   table_name: string
   from_tier: StorageTier
   suggested_tier: StorageTier
+  target_tier: StorageTier
   size_gb: number
   hot_score: number
   save_month: number
+  retrieval_month: number
   migration_cost: number
   payback_months: number | null
   net_save_year: number
+  restore_hours: number | null
+  restore_ok: boolean
+  restore_verdict: string
+  stats_days: number
+  stats_complete: boolean
   risk: RiskLevel
   reasons: string
   status: string
@@ -243,11 +291,15 @@ export interface Plan {
   total_size_gb: number
   save_month: number
   save_year: number
+  retrieval_month: number
   migration_cost: number
   net_save_year: number
   avg_payback: number | null
   risk_block_count: number
   risk_warn_count: number
+  target_warm_count: number
+  target_cold_count: number
+  stats_incomplete_count: number
   created_by: string
   submitted_by: string
   submitted_at: string | null

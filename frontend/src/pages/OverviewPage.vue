@@ -198,11 +198,11 @@ onMounted(load)
             </button>
             <p class="spot-facts mono">
               {{ gb(overview.coldest_candidate.size_gb) }} · 月省 ¥{{ money(overview.coldest_candidate.save_month) }} ·
-              回收期 {{ overview.coldest_candidate.payback_months ?? '—' }} 月
+              回收期 {{ overview.coldest_candidate.payback_months ?? '—' }} 月 · 目标{{ TIER_LABELS[overview.coldest_candidate.economics.target_tier] }}
             </p>
             <p class="spot-note">
               按 {{ overview.coldest_candidate.economics.price_before }} → {{ overview.coldest_candidate.economics.price_after }}
-              ¥/GB·月 计算，含一次性迁移成本 ¥{{ money(overview.coldest_candidate.economics.migration_cost) }}。
+              ¥/GB·月 计算，含一次性迁移成本 ¥{{ money(overview.coldest_candidate.economics.migration_cost) }}<template v-if="overview.coldest_candidate.economics.retrieval_month">、月检索费 ¥{{ money(overview.coldest_candidate.economics.retrieval_month, 2) }}</template>。
             </p>
           </section>
 

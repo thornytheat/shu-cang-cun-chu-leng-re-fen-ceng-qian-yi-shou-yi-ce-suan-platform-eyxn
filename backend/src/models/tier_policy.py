@@ -35,5 +35,10 @@ class TierPolicy(Base, TimestampMixin):
     min_partition: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     migrate_price: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False, default=0)
     migrate_fixed: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
+    # 冷区检索费与恢复时限（降冷测算口径：检索按量计费、大表恢复超时降级温区）
+    retrieval_price_gb: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False, default=0.2)
+    request_price_1k: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False, default=6.0)
+    restore_speed_gb_h: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=500)
+    restore_deadline_h: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=8)
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_by: Mapped[str] = mapped_column(String(120), nullable=False, default="")

@@ -82,6 +82,22 @@ class PolicyGroup:
     def migrate_fixed(self) -> float:
         return float(self.cold.migrate_fixed)
 
+    @property
+    def retrieval_price_gb(self) -> float:
+        return float(self.cold.retrieval_price_gb)
+
+    @property
+    def request_price_1k(self) -> float:
+        return float(self.cold.request_price_1k)
+
+    @property
+    def restore_speed_gb_h(self) -> float:
+        return float(self.cold.restore_speed_gb_h)
+
+    @property
+    def restore_deadline_h(self) -> float:
+        return float(self.cold.restore_deadline_h)
+
 
 def _tier_rows(db: Session, is_current: bool) -> list[TierPolicy]:
     stmt = (
@@ -115,6 +131,10 @@ def serialize_row(row: TierPolicy) -> dict:
         "min_partition": int(row.min_partition),
         "migrate_price": float(row.migrate_price),
         "migrate_fixed": float(row.migrate_fixed),
+        "retrieval_price_gb": float(row.retrieval_price_gb),
+        "request_price_1k": float(row.request_price_1k),
+        "restore_speed_gb_h": float(row.restore_speed_gb_h),
+        "restore_deadline_h": float(row.restore_deadline_h),
         "updated_by": row.updated_by,
         "updated_at": row.updated_at.isoformat() if row.updated_at else "",
         "is_current": bool(row.is_current),
@@ -180,6 +200,10 @@ def update(db: Session, payload, actor: User, trace_id: str = "") -> dict:
             min_partition=payload.min_partition,
             migrate_price=payload.migrate_price,
             migrate_fixed=payload.migrate_fixed,
+            retrieval_price_gb=payload.retrieval_price_gb,
+            request_price_1k=payload.request_price_1k,
+            restore_speed_gb_h=payload.restore_speed_gb_h,
+            restore_deadline_h=payload.restore_deadline_h,
             activated_at=now,
             updated_by=actor.email,
         )

@@ -1,10 +1,12 @@
 """迁移计划：建计划 → 风险复检 → 移除阻断 → 提交 → 导出。
 
-计划汇总口径与 TrialResultOut 一致：
-  save_month = Σ 逐表月省；save_year = save_month × 12
-  migration_cost = Σ (size × 迁移单价 + 每表固定工单成本)
+计划汇总口径与 TrialResultOut 一致（汇总 = 逐表结果之和）：
+  save_month = Σ 逐表月省（已扣目标温区检索费）；save_year = save_month × 12
+  retrieval_month = Σ 逐表目标温区月检索成本（温区目标为 0）
+  migration_cost = Σ (size × 迁移单价 + 每表固定工单成本；目标 = 当前温区为 0)
   net_save_year = save_year - migration_cost
-  avg_payback = migration_cost / save_month（加权，1.8 月即此口径）
+  avg_payback = migration_cost / save_month（加权）
+提交硬条件：无风险阻断项 且 全部表 90 天统计完整（迟到记录未补齐不得提交）。
 """
 from __future__ import annotations
 
@@ -72,6 +74,7 @@ def recount(db: Session, plan: MigrationPlan) -> dict:
     plan.total_size_gb = summary["size_total_gb"]
     plan.save_month = summary["save_month"]
     plan.save_year = summary["save_year"]
+    plan.retrieval_month = summary["retrieval_month"]
     plan.migration_cost = summary["migration_cost"]
     plan.net_save_year = summary["net_save_year"]
     plan.avg_payback = summary["avg_payback"]
@@ -83,11 +86,15 @@ def recount(db: Session, plan: MigrationPlan) -> dict:
         "total_size_gb": plan.total_size_gb,
         "save_month": plan.save_month,
         "save_year": plan.save_year,
+        "retrieval_month": plan.retrieval_month,
         "migration_cost": plan.migration_cost,
         "net_save_year": plan.net_save_year,
         "avg_payback": float(plan.avg_payback) if plan.avg_payback is not None else None,
         "risk_block_count": plan.risk_block_count,
         "risk_warn_count": plan.risk_warn_count,
+        "target_warm_count": summary["target_warm_count"],
+        "target_cold_count": summary["target_cold_count"],
+        "stats_incomplete_count": summary["stats_incomplete_count"],
     }
 
 
@@ -98,12 +105,19 @@ def serialize_item(item: MigrationPlanItem) -> dict:
         "table_name": item.table_name,
         "from_tier": item.from_tier,
         "suggested_tier": item.suggested_tier,
+        "target_tier": item.target_tier,
         "size_gb": float(item.size_gb),
         "hot_score": float(item.hot_score),
         "save_month": float(item.save_month),
+        "retrieval_month": float(item.retrieval_month),
         "migration_cost": float(item.migration_cost),
         "payback_months": float(item.payback_months) if item.payback_months is not None else None,
         "net_save_year": float(item.net_save_year),
+        "restore_hours": float(item.restore_hours) if item.restore_hours is not None else None,
+        "restore_ok": bool(item.restore_ok),
+        "restore_verdict": item.restore_verdict,
+        "stats_days": int(item.stats_days),
+        "stats_complete": bool(item.stats_complete),
         "risk": item.risk,
         "reasons": item.reasons,
         "status": item.status,
@@ -123,11 +137,15 @@ def serialize_plan(db: Session, plan: MigrationPlan, with_items: bool = True) ->
         "total_size_gb": float(plan.total_size_gb),
         "save_month": float(plan.save_month),
         "save_year": float(plan.save_year),
+        "retrieval_month": float(plan.retrieval_month),
         "migration_cost": float(plan.migration_cost),
         "net_save_year": float(plan.net_save_year),
         "avg_payback": float(plan.avg_payback) if plan.avg_payback is not None else None,
         "risk_block_count": int(plan.risk_block_count),
         "risk_warn_count": int(plan.risk_warn_count),
+        "target_warm_count": sum(1 for item in items if item.target_tier == StorageTier.WARM),
+        "target_cold_count": sum(1 for item in items if item.target_tier == StorageTier.COLD),
+        "stats_incomplete_count": sum(1 for item in items if not item.stats_complete),
         "created_by": plan.created_by,
         "submitted_by": plan.submitted_by,
         "submitted_at": plan.submitted_at.isoformat() if plan.submitted_at else None,
@@ -159,20 +177,27 @@ def _plan_or_404(db: Session, plan_id) -> MigrationPlan:
 
 
 def build_item(db: Session, plan: MigrationPlan, profile: TableProfile, hot, group) -> MigrationPlanItem:
-    econ = cost_service.economics(float(profile.size_gb), profile.tier, group)
-    verdict = cost_service.assess_risk(profile, hot, group)
+    econ = cost_service.economics(float(profile.size_gb), profile.tier, group, hot)
+    verdict = cost_service.assess_risk(profile, hot, group, econ)
     return MigrationPlanItem(
         plan_id=plan.id,
         table_id=profile.id,
         table_name=profile.full_name,
         from_tier=profile.tier,
         suggested_tier=hot.suggested_tier,
+        target_tier=econ.target_tier,
         size_gb=float(profile.size_gb),
         hot_score=hot.hot_score,
         save_month=econ.save_month,
+        retrieval_month=econ.retrieval_month,
         migration_cost=econ.migration_cost,
         payback_months=econ.payback_months,
         net_save_year=econ.net_save_year,
+        restore_hours=econ.restore_hours,
+        restore_ok=econ.restore_ok,
+        restore_verdict=econ.restore_verdict,
+        stats_days=hot.stat_days,
+        stats_complete=hot.stats_complete,
         risk=verdict.risk,
         reasons=verdict.reasons,
         status=PlanItemStatus.PENDING,
@@ -296,7 +321,7 @@ def remove_item(db: Session, plan_id: str, item_id: str, actor: User, trace_id: 
 
 
 def recheck(db: Session, group, plan_id: str, actor: User, trace_id: str = "") -> dict:
-    """风险复检：按最新访问数据重算每张表的风险与收益，同步刷新汇总。"""
+    """风险复检：按最新访问数据重算每张表的温冷对比、风险与收益，同步刷新汇总。"""
     plan = _plan_or_404(db, plan_id)
     scores = heat_service.compute_scores(db, group)
     for item in active_items(db, plan.id):
@@ -304,15 +329,22 @@ def recheck(db: Session, group, plan_id: str, actor: User, trace_id: str = "") -
         hot = scores.get(str(item.table_id))
         if profile is None or hot is None:
             continue
-        econ = cost_service.economics(float(profile.size_gb), profile.tier, group)
-        verdict = cost_service.assess_risk(profile, hot, group)
+        econ = cost_service.economics(float(profile.size_gb), profile.tier, group, hot)
+        verdict = cost_service.assess_risk(profile, hot, group, econ)
         item.size_gb = float(profile.size_gb)
         item.hot_score = hot.hot_score
         item.suggested_tier = hot.suggested_tier
+        item.target_tier = econ.target_tier
         item.save_month = econ.save_month
+        item.retrieval_month = econ.retrieval_month
         item.migration_cost = econ.migration_cost
         item.payback_months = econ.payback_months
         item.net_save_year = econ.net_save_year
+        item.restore_hours = econ.restore_hours
+        item.restore_ok = econ.restore_ok
+        item.restore_verdict = econ.restore_verdict
+        item.stats_days = hot.stat_days
+        item.stats_complete = hot.stats_complete
         item.risk = verdict.risk
         item.reasons = verdict.reasons
     plan.rechecked_at = _now()
@@ -337,6 +369,14 @@ def submit(db: Session, plan_id: str, actor: User, trace_id: str = "") -> dict:
     items = active_items(db, plan.id)
     if not items:
         raise AppError(codes.PLAN_EMPTY, "计划中没有可提交的表", f"plan={plan.code}")
+    incomplete = savings_core.incomplete_stats(items)
+    if incomplete:
+        raise AppError(
+            codes.PLAN_STATS_INCOMPLETE,
+            f"仍有 {len(incomplete)} 张表缺少完整的 90 天统计（迟到记录未补齐），不得提交",
+            ",".join(incomplete),
+            extra={"incomplete": incomplete},
+        )
     blockers = savings_core.blockers(items)
     if blockers:
         raise AppError(

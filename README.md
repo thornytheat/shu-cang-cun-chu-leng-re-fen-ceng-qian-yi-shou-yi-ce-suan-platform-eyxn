@@ -8,11 +8,11 @@
 |---|---|
 | 客户 | 青禾零售 · 数据平台组（9 人），维护 42 张数仓表、约 42 TB 明细，月度存储费约 ¥3.8 万 |
 | 现有工作流 | 每季度凭印象挑「半年没人查」的表归档到对象存储冷区；用 Excel 按单价拍脑袋估省；迁移前没有闸门 |
-| 三个痛点 | ① 查询热度没有口径，谁热谁冷靠猜；② 迁移能省多少钱算不清（还漏了一次性迁移成本）；③ 误迁风险没有闸门 —— 去年误迁 2 张月报底表，回迁花 2 天 |
+| 三个痛点 | ① 查询热度没有口径，谁热谁冷靠猜；② 迁移能省多少钱算不清（漏了一次性迁移成本、冷区检索费和大表恢复时间，扫描多的表收益被算高）；③ 误迁风险没有闸门 —— 去年误迁 2 张月报底表，回迁花 2 天 |
 | 上游 | 表元数据（大小 / 分区 / 压缩 / 最近写入）+ 按天聚合的查询日志（本仓库 seed 生成 3,600 行日访问） |
 | 本系统替代 | 「凭印象挑表 + Excel 估省」→「热度口径统一 + 净收益测算 + 风险闸门 + 工单导出」 |
 | 下游 | 季度存储预算评审（财务）、迁移工单（平台组执行）、报表 owner 的确认回执 |
-| 一天的工作剧本 | 09:10 陈可欣（admin）在「策略与试算」确认本季单价 热 1.05 / 温 0.85 / 冷 0.55 ¥/GB·月；09:35 林哲（analyst）把阈值调到 20 试算，命中 12 张，预估月省 ¥6,840；10:05 勾选前 8 张建计划 `MP-2026Q4-00x`；10:20 风险复检，`ads.monthly_finance_report_base`、`dws.store_daily_gmv` 近 7 天仍被访问 → 阻断；10:32 逐张移除阻断项；10:40 提交 6 张，净年省 ¥51,300、平均回收期 1.8 月；10:45 导出工单 CSV 交平台组排期；11:00 赵敏（viewer）在只读视图核对收益与风险。 |
+| 一天的工作剧本 | 09:10 陈可欣（admin）在「策略与试算」确认本季单价 热 1.05 / 温 0.85 / 冷 0.55 ¥/GB·月、冷区检索 0.2 ¥/GB + 6 ¥/千次、恢复 500 GB/h 时限 8h；09:35 林哲（analyst）把阈值调到 20 试算，命中 12 张：温冷对比后 2 张降级温区（`dwd.trade_order_detail` 恢复 9.6h 超时、`ods.click_stream` 检索费 ¥553/月吃掉价差）、10 张进冷区，预估月省 ¥3,972（已扣检索费 ¥924/月）；10:05 勾选前 8 张建计划 `MP-2026Q4-00x`；10:20 风险复检，`ads.monthly_finance_report_base`、`dws.store_daily_gmv` 近 7 天仍被访问 → 阻断；10:32 逐张移除阻断项；10:40 提交 6 张，净年省 ¥21,027、平均回收期 3.6 月；10:45 导出工单 CSV（含目标温区 / 检索费 / 恢复时限结论）交平台组排期；11:00 赵敏（viewer）在只读视图核对收益与风险。 |
 
 ## 2. 角色与权限（后端 RBAC 真实返回 403）
 
@@ -29,8 +29,8 @@
 1. **登录**（`/login`）：三角色演示账号一键填充，失败态可重试。
 2. **存储概览**（`/overview`）：三档货架（体积 / 单价 / 月成本）、分层 × 温区体积树图（squarified，自绘 SVG）、42 张表货架清单（温区/分层/搜索/排序）、候选温度计、最热表与最大降冷机会、审计尾行。
 3. **表热度详情**（`/tables/:id`）：90 天访问序列 + 衰减权重图（自绘 SVG）、温度计、风险闸门逐项结论、收益测算、表元数据、同层邻表。
-4. **策略与试算**（`/policies`）：阈值滑杆 + 试算（命中数 / 月省 / 年省 / 净年省 / 回收期）、逐表勾选、以选中项建计划；admin 可编辑三档单价与冷区前置条件（保存即升版 v+1，旧版归档）。
-5. **迁移计划**（`/plans`）：计划台账（左）+ 计划工位（右）：风险复检 → 移除阻断项 → 提交 → 导出工单 CSV；admin 额外可见审计台账。
+4. **策略与试算**（`/policies`）：阈值滑杆 + 试算（命中数 / 目标温区分布 / 月省 / 检索费 / 年省 / 净年省 / 回收期）、逐表勾选、以选中项建计划；admin 可编辑三档单价、冷区前置条件与检索费/恢复时限参数（保存即升版 v+1，旧版归档）。
+5. **迁移计划**（`/plans`）：计划台账（左）+ 计划工位（右）：风险复检 → 移除阻断项 → 提交 → 导出工单 CSV；逐表与工单均展示目标温区、检索成本、净收益与恢复时限结论，汇总 = 逐表之和；admin 额外可见审计台账。
 
 实体贯穿：`TableProfile` / `AccessStat` / `TierPolicy` / `MigrationPlan`（含子聚合 `MigrationPlanItem`）
 表 → `backend/src/models/*` → `schemas/*` → `services/*` → `controllers/*` + `routes/*` → 前端 `api/*` → `stores/*` → `pages` + `components/domain/*`。
@@ -49,23 +49,29 @@ S         = min(100, S_decay + B)
            S < 20 但近 30 天仍有访问 → warm（冷存前置条件不满足，保守留温区）
 ```
 
-**算法 2 净收益与风险闸门**（`backend/src/services/cost_service.py`）
+**算法 2 温冷对比测算与风险闸门**（`backend/src/services/cost_service.py`）
 
 ```
-price_before  = 表当前所在层单价（热区候选即 hot_price）
-cost_before   = size_GB × price_before
-cost_after    = size_GB × cold_price
-save_month    = cost_before − cost_after
-migration_cost= size_GB × migrate_price + migrate_fixed     # 跨区重写流量 + 每表工单/校验人工
-payback_months= migration_cost / save_month
-net_save_year = save_month × 12 − migration_cost            # 首年净省
-风险闸门      近 7 天有访问 → block ｜ 被报表引用 → warn（需 owner 确认）｜ 分区 < 3 → warn（无法灰度回迁）
-计划汇总      avg_payback = Σ迁移成本 / Σ月省（按节省额加权）
+按近 90 天查询次数与扫描量，为每张表同时算「温区方案」与「冷区方案」，取首年净省更高者
+  retrieval_month = 月扫描GB × 检索单价 + 月查询次数/1000 × 请求单价   # 仅冷区收取
+                   （迟到记录不按零查询：缺统计的天按有记录天均值外推）
+  restore_hours   = size_GB / 恢复速度（500 GB/h）
+                   恢复超时（> 时限 8h）-> 冷区方案出局，降级温区
+  price_before    = 表当前所在层单价（热区候选即 hot_price）
+  save_month      = size_GB × (price_before − 目标层单价) − retrieval_month
+  migration_cost  = size_GB × migrate_price + migrate_fixed     # 跨区重写流量 + 每表工单/校验人工
+                   （目标温区 = 当前温区时为 0，不迁移）
+  payback_months  = migration_cost / save_month
+  net_save_year   = save_month × 12 − migration_cost            # 首年净省
+风险闸门      近 7 天有访问 → block ｜ 统计 < 90 天（迟到记录未补齐）→ block，不得提交
+             被报表引用 → warn（需 owner 确认）｜ 分区 < 3 → warn（无法灰度回迁）
+             冷区恢复超时（已降级温区）→ warn
+计划汇总      汇总 = 逐表结果之和；avg_payback = Σ迁移成本 / Σ月省（按节省额加权）
 ```
 
 复现条件：seed 固定 42 张表与 3,600 行日访问（确定性哈希抖动），阈值 20 时结果恒为
-`命中 12 张 / 月省 6840 / 年省 82080`；勾选前 8 张并移除 2 张阻断项后
-`6 张 / 净年省 51300 / 平均回收期 1.8 月 / 工单 CSV 6 行`。
+`命中 12 张（温区目标 2 / 冷区目标 10）/ 月省 3972.21 / 检索费 923.79 / 年省 47666.52`；勾选前 8 张并移除 2 张阻断项后
+`6 张 / 净年省 21027.07 / 平均回收期 3.6 月 / 工单 CSV 6 行`。
 
 ## 5. 快速启动
 
@@ -185,7 +191,7 @@ gb-582/
 
 | 端 | 位置 |
 |---|---|
-| 后端 | `src/constants/enums.py`(StorageTier, TIER_LABELS) · `models/table_profile.py`(tier) · `models/tier_policy.py`(tier) · `models/migration_plan_item.py`(from_tier/suggested_tier) · `services/heat_service.py`(建议温区) · `services/cost_service.py`(price_for) · `services/trial_service.py` · `services/table_service.py` · `services/overview_service.py` · `services/export_service.py` · `services/plan_service.py` · `schemas/table.py` · `schemas/policy.py` · `schemas/plan.py` · `schemas/overview.py` · `scripts/fixtures.py` |
+| 后端 | `src/constants/enums.py`(StorageTier, TIER_LABELS) · `models/table_profile.py`(tier) · `models/tier_policy.py`(tier) · `models/migration_plan_item.py`(from_tier/suggested_tier/target_tier) · `services/heat_service.py`(建议温区) · `services/cost_core.py`(温冷对比目标温区) · `services/cost_service.py`(price_for) · `services/trial_service.py` · `services/table_service.py` · `services/overview_service.py` · `services/export_service.py` · `services/plan_service.py` · `schemas/table.py` · `schemas/policy.py` · `schemas/plan.py` · `schemas/overview.py` · `scripts/fixtures.py` |
 | 前端 | `types/domain.ts`(StorageTier) · `constants/enums.ts`(STORAGE_TIERS / TIER_LABELS / TIER_CODES / TIER_HINT) · `components/common/TierBadge.vue` · `components/domain/ShelfTable.vue` · `TierThermometer.vue` · `CostLadder.vue` · `TrialBoard.vue` · `PolicyEditor.vue` · `PlanWorkbench.vue` · `pages/OverviewPage.vue` · `TableHeatPage.vue` · `PolicyTrialPage.vue` · `LoginPage.vue` |
 
 **`risk_level`（block / warn / ok）**

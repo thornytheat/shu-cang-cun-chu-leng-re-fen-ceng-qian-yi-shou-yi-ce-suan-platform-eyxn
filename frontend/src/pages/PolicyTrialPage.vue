@@ -132,7 +132,7 @@ onMounted(load)
         <div class="panel-head">
           <div>
             <p class="label">试算汇总</p>
-            <h2 class="panel-title">把候选表迁到冷区的一年账</h2>
+            <h2 class="panel-title">候选表温冷对比的一年账</h2>
           </div>
           <span v-if="policy.trial" class="mono small">
             POLICY v{{ policy.trial.policy_version }} · 评估 {{ policy.trial.evaluated_count }} 张
@@ -157,6 +157,12 @@ onMounted(load)
             :value="`¥${money(policy.trial.save_month)}`"
             :hint="`年省 ¥${money(policy.trial.save_year)}`"
             tone="wood"
+          />
+          <MetricTile
+            label="月检索成本"
+            :value="`¥${money(policy.trial.retrieval_month, 2)}`"
+            :hint="`目标温区 温 ${policy.trial.target_warm_count} · 冷 ${policy.trial.target_cold_count}`"
+            tone="cold"
           />
           <MetricTile
             label="迁移成本合计"

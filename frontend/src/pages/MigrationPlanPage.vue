@@ -70,7 +70,7 @@ onMounted(loadAll)
       eyebrow="C-01 / MIGRATION PLAN"
       title="迁移计划"
       code="WORK ORDER · CSV EXPORT"
-      desc="左侧是季度计划台账，右侧是计划工位：风险复检 → 移除阻断项 → 提交 → 导出工单 CSV。汇总口径与试算一致（净年省 = 年省 − 一次性迁移成本）。"
+      desc="左侧是季度计划台账，右侧是计划工位：风险复检 → 移除阻断项 → 提交 → 导出工单 CSV。逐表展示目标温区、检索成本与恢复时限结论；汇总口径与试算一致（净年省 = 年省 − 检索费 − 一次性迁移成本，汇总 = 逐表之和）。"
     >
       <template #actions>
         <button class="btn btn-sm" type="button" :disabled="plans.loading" @click="loadAll">刷新</button>

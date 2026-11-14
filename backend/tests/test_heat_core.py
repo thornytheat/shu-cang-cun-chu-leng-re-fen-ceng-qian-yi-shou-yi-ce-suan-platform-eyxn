@@ -10,7 +10,7 @@ import pytest
 
 from scripts import fixtures
 from src.services import heat_core
-from tests.conftest import seeded_counts
+from tests.conftest import seeded_counts, seeded_usage
 
 
 # --------------------------------------------------------------- 正常路径 ----
@@ -132,6 +132,48 @@ def test_window_dates_is_contiguous_and_descending() -> None:
     days = heat_core.window_dates(date(2026, 11, 12), 3)
     assert days == [date(2026, 11, 12), date(2026, 11, 11), date(2026, 11, 10)]
     assert len(heat_core.window_dates(date(2026, 11, 12))) == 90
+
+
+# ------------------------------------------------------ 用量汇总（迟到记录） ----
+def test_aggregate_usage_full_window_no_extrapolation() -> None:
+    """90 天统计完整：不外推，query_90 / scan_bytes_90 就是观测值。"""
+    rows = [(10, 2 * 1024 ** 3)] * 90
+    usage = heat_core.aggregate_usage(rows, 90)
+    assert usage == {
+        "query_90": 900.0,
+        "scan_bytes_90": float(180 * 1024 ** 3),
+        "stat_days": 90,
+        "stats_complete": True,
+    }
+
+
+def test_aggregate_usage_late_records_not_counted_as_zero() -> None:
+    """迟到记录不按零查询：40 天有统计（每天 100 次）-> 外推 90 天 = 100×90，而不是 100×40。"""
+    rows = [(100, 1024)] * 40
+    usage = heat_core.aggregate_usage(rows, 90)
+    assert usage["stat_days"] == 40
+    assert usage["stats_complete"] is False
+    assert usage["query_90"] == pytest.approx(100 * 90, rel=1e-9)
+    assert usage["scan_bytes_90"] == pytest.approx(1024 * 90, rel=1e-9)
+
+
+def test_aggregate_usage_empty_is_incomplete() -> None:
+    """窗口内零统计行：用量 0 且统计不完整（提交闸门的硬条件）。"""
+    assert heat_core.aggregate_usage([], 90) == {
+        "query_90": 0.0,
+        "scan_bytes_90": 0.0,
+        "stat_days": 0,
+        "stats_complete": False,
+    }
+
+
+def test_aggregate_usage_real_seed_slice() -> None:
+    """真实 seed 表 dws.promo_effect_weekly：40 天统计 -> 外推 90 天且标记不完整。"""
+    spec = next(item for item in fixtures.TABLES if item.full_name == "dws.promo_effect_weekly")
+    usage = seeded_usage(spec)
+    assert usage["stat_days"] == 40
+    assert usage["stats_complete"] is False
+    assert usage["query_90"] == pytest.approx(8995.5, rel=1e-9)
 
 
 # ---------------------------------------------------------- 分层建议（闸门） ----

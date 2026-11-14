@@ -1,4 +1,7 @@
-"""工单 CSV 导出（业务链路最后一环）。"""
+"""工单 CSV 导出（业务链路最后一环）。
+
+工单列与计划页逐表口径一致：目标温区（温冷对比结论）、月检索成本、净年省、恢复时限结论。
+"""
 from __future__ import annotations
 
 import csv
@@ -23,9 +26,11 @@ HEADERS = [
     "目标温区",
     "大小GB",
     "月省元",
+    "月检索成本元",
     "迁移成本元",
     "回收期月",
     "净年省元",
+    "恢复时限结论",
     "风险",
     "风险说明",
     "负责人",
@@ -50,12 +55,14 @@ def build_ticket_csv(db: Session, plan: MigrationPlan, actor: User | None = None
                 plan.title,
                 item.table_name,
                 TIER_LABELS.get(item.from_tier, item.from_tier),
-                TIER_LABELS.get(item.suggested_tier, item.suggested_tier),
+                TIER_LABELS.get(item.target_tier, item.target_tier),
                 f"{float(item.size_gb):.2f}",
                 f"{float(item.save_month):.2f}",
+                f"{float(item.retrieval_month):.2f}",
                 f"{float(item.migration_cost):.2f}",
                 f"{float(item.payback_months):.2f}" if item.payback_months is not None else "",
                 f"{float(item.net_save_year):.2f}",
+                item.restore_verdict,
                 RISK_LABELS.get(item.risk, item.risk),
                 item.reasons,
                 "",

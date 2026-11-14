@@ -17,6 +17,10 @@ class PolicyTierOut(BaseModel):
     min_partition: int
     migrate_price: float
     migrate_fixed: float
+    retrieval_price_gb: float
+    request_price_1k: float
+    restore_speed_gb_h: float
+    restore_deadline_h: float
     updated_by: str
     updated_at: str
     is_current: bool
@@ -46,6 +50,10 @@ class PolicyUpdateIn(BaseModel):
     min_partition: int = Field(default=3, ge=1, le=365)
     migrate_price: float = Field(default=0.75, ge=0, le=100)
     migrate_fixed: float = Field(default=270, ge=0, le=100000)
+    retrieval_price_gb: float = Field(default=0.2, ge=0, le=100)
+    request_price_1k: float = Field(default=6.0, ge=0, le=10000)
+    restore_speed_gb_h: float = Field(default=500, gt=0, le=100000)
+    restore_deadline_h: float = Field(default=8, gt=0, le=720)
     note: str = ""
 
 
@@ -64,10 +72,19 @@ class TrialHitOut(BaseModel):
     report_refs: int
     hot_score: float
     suggested_tier: str
+    target_tier: str
     save_month: float
+    retrieval_month: float
     migration_cost: float
     payback_months: float | None
     net_save_year: float
+    restore_hours: float | None
+    restore_ok: bool
+    restore_verdict: str
+    query_90: int
+    scan_gb_90: float
+    stats_days: int
+    stats_complete: bool
     risk: str
     reasons: str
     recent_7_access: int
@@ -82,10 +99,14 @@ class TrialResultOut(BaseModel):
     size_total_gb: float
     save_month: float
     save_year: float
+    retrieval_month: float
     migration_cost: float
     net_save_year: float
     avg_payback: float | None
     risk_block_count: int
     risk_warn_count: int
+    target_warm_count: int
+    target_cold_count: int
+    stats_incomplete_count: int
     hits: list[TrialHitOut]
     computed_at: str

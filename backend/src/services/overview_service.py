@@ -98,7 +98,9 @@ def build(db: Session, group, audit_limit: int = 6) -> dict:
                 "payback_months": coldest["payback_months"],
                 "hot_score": coldest["hot_score"],
                 "table_id": coldest["table_id"],
-                "economics": cost_service.economics(coldest["size_gb"], coldest["tier"], group).to_dict(),
+                "economics": cost_service.economics(
+                    coldest["size_gb"], coldest["tier"], group, scores[coldest["table_id"]]
+                ).to_dict(),
             }
             if coldest
             else None
